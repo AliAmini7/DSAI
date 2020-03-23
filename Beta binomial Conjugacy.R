@@ -22,3 +22,12 @@ grid.arrange(plot1, plot2, ncol = 2)
 
 #probability of p<0.5
 pbeta(0.5, shape1 = 1, shape2 = 5)
+
+# Lets find a 95% credible interval
+library(coda)
+# Draw random sample to approximate Beta(1,5)
+y = rbeta(10000, shape1 = 1, shape2 = 5)
+
+y_mcmc = as.mcmc(y)
+
+HPDinterval(y_mcmc, prob = 0.95)
