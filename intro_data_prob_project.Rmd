@@ -1,0 +1,424 @@
+---
+title: "Exploring the BRFSS data"
+output:
+  html_document:
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+  pdf_document: default
+  word_document: default
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(reshape)
+library(ggrepel)
+library(gmodels)
+```
+
+### Load data
+
+
+```{r load-data}
+load("brfss2013.RData")
+data <- brfss2013
+```
+
+
+
+* * *
+
+## Part 1: Data
+The Behavioral Risk Factor Surveillance System (BRFSS) is a data set that contains data of adults from all of the states in the US. This system is designed to measure the behavioral risk through *telephone interviews*. The data set contains state-specific data on preventive health practices and risk behaviors that are linked to chronic diseases, injuries, and preventable infectious diseases that affect the US adult population.
+
+**1-1. Sampling method and generalization:**
+BRFSS conducts both land-line telephone and cellular telephone-based surveys. In conducting the BRFSS land-line telephone survey, interviewers collect data from a randomly selected adult in a household (*Multi-Stage sampling*). In conducting the cellular telephone version of the BRFSS questionnaire, interviewers collect data from an adult who participates by using a cellular telephone and resides in a private residence or college housing (*Simple Random Sampling*). Since these sampling methods are probability, we are able to generalize the findings to the intended population which is **the non-institutionalized adult population, aged 18 years or older, who reside in the US.** But wait ...
+
+In above reasoning, there are two underlying assumptions:
+
+**Assumption 1**- The response rate is high: 
+
+If response rate is not high enough, we will have a large *non-response bias* which affects the generalization degree of the results.
+In order to check for that, one can check the data quality report of the 2013 data set at https://www.cdc.gov/brfss/annual_data/2013/pdf/2013_DQR.pdf.
+Based on the quality report, response rate for BRFSS 2013 for land-line is 49.6% and for cellphone is  37.8%. This reminds us to take the results with a pinch of salt when generalizing them to the intended population mentioned above. 
+
+**Assumption 2**- The effect of call blocking is marginal:
+
+The second assumption states that by random calling we can reach out to all the eligible units in the intended population. While theoretically this is a rational assumption, in reality many of the phone users block the commercial calls. If the survey call is considered commercial and indeed it is possible to be blocked, our sampling frame is not covering the whole intended population and hence it is hard to generalize our findings to the intended population. Indeed, if a small fraction are blocking the commercial calls, we can safely assume that generalization is valid. In this link, https://www.aapor.org/Education-Resources/Reports/Spam-Flagging-and-Call-Blocking-and-Its-Impact-on.aspx, the effect of spam flagging and call blocking on the quality of surveys is being discussed. 
+
+
+**1-2. Design of the study:**
+Here, we are dealing with an **observational study**. We have not randomly assigned individuals to certain groups in order to study the effect of a certain exposure. For example, some people are smokers and some are not smokers. We have not assigned them to these two groups. If we see an association between a disease and smoking, since this is an observation, we can't conclude that smoking is causing that disease. 
+
+
+* * *
+
+## Part 2: Research questions
+
+**Research quesion 1:**
+First, I want to explore the association between the type of physical activity that participants have reported and the amount of reported daily sleep duration. Second, I want to see if a third variable (confounder) like age can explain that association. 
+
+**Research quesion 2:**
+Gender Pay Gap is a concern to many human rights activists. I want to see if there is an association between gender and income level and if there is such an association, can education level explain it to some extent?
+ 
+
+**Research quesion 3:**
+Do those who have stopped smoking in the past 12 months have a better perceived general health? If not, can we explain it by the presence of a medical condition?
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+**Research quesion 1:**
+
+*First, I want to explore the association between the type of physical activity that participants have reported and the amount of reported daily sleep duration. Second, I want to see if a third variable (confounder) like age can explain that association.*
+
+Let's start by looking into the variable that indicates the sleep duration. Looking into the code-book, `sleptim1` is the variable that stores the answer to the question:
+*How Much Time Do You Sleep*
+
+```{r}
+str(data$sleptim1)
+```
+
+This shows that we are dealing with a numerical variable that stores the number of hours someone sleeps per night. 
+Now, let's take a look at the distribution of the sleep duration. We anticipate to see a normal shaped histogram with mean around 7 hours.
+
+
+```{r}
+qplot(data$sleptim1,
+      geom="histogram",
+      binwidth = 1,  
+      main = "Histogram for daily sleep duration", 
+      xlab = "Sleep duration",  
+      fill=I("blue"), 
+      col=I("red"), 
+      alpha=I(.2),
+      xlim=c(0,24))
+```
+
+`exract11` is the variable that stores the type of physical activity.
+let's look into the structure of this variable first.
+
+```{r}
+str(data$exract11)
+```
+
+which means `exract11` is a categorical variable with 75 levels. 
+
+Now let's see if the average of sleep duration is different for the people who do different physical activities:
+
+```{r}
+data %>%
+  #Let's first exclude those who have not indicated their sleep duration.
+  filter(!is.na(sleptim1)) %>%
+  #Let's filter all those who have indicated a sleep duration of more
+  #than 20 hours, these are outliers.
+  filter(sleptim1 < 21) %>%
+  group_by(exract11) %>%
+  summarise(mean_Sleep = mean(sleptim1), n = n()) %>%
+  #Since some of the mean values estimated are coming from a small number of observations, 
+  #I decided to only include those data that there are at least 100 observations for.
+  filter(n > 99) %>%
+  arrange(desc(mean_Sleep))
+```
+
+Above results shows that those who have indicated *Snowshoeing* as their physical activity have the highest average sleep duration and those who play *Frisbee* have the lowest reported average sleep duration. In other words:
+**There is an association between the sleep duration and the type of physical activity**
+
+But why? And can a third variable explain this association? Let's look into the age as a potential confounding variable.
+
+Looking into the code-book, unfortunately, there is no variable that stores the reported age of the participants. Instead, we have `X_ageg5yr` that is the reported age in five-Year age categories. If age, similar to the sleep duration, was a numerical variable, I could calculate the average age for each physical activity and then create a scatter plot between the average sleep duration and the average age while each point in scatter plot indicated a type of physical activity. In this case, if correlation in this scatter plot is non-zero ($r \neq 0$), this shows that age is a confounder. 
+
+With that strategy in mind, I am going to create a numerical age variable by using `mutate` and change the categorical age variable, `X_ageg5yr`, into a numerical variable by assigning the numerical value of the middle point of the range to each category as a numerical value. As an example, if someone has indicated that they are between 25 to 29 years old, I assume they are 27 years old. You will get it better when you look at the code:
+
+
+```{r}
+# first let's take a look at X_ageg5yr levels
+data %>%
+  group_by(X_ageg5yr) %>%
+  summarise(count = n())
+```
+
+Now let's substitute them with numerical values:
+
+```{r}
+data <- data %>%
+     mutate(X_ageg5yr = recode(X_ageg5yr, "Age 18 to 24" = 21,
+            "Age 25 to 29" = 27,
+            "Age 30 to 34" = 32,
+            "Age 35 to 39" = 37,
+            "Age 40 to 44" = 42,
+            "Age 45 to 49" = 47,
+            "Age 50 to 54" = 52,
+            "Age 55 to 59" = 57,
+            "Age 60 to 64" = 62,
+            "Age 65 to 69" = 67,
+            "Age 70 to 74" = 72,
+            "Age 75 to 79" = 77,
+            "Age 80 or older" = 85))
+data %>%
+  group_by(X_ageg5yr) %>%
+  summarise(count = n())
+
+```
+
+Now let's calculate the average sleep duration and average age for each physical activity and put them on a scatter plot.
+
+
+
+```{r}
+#Let's create a data set that stores the average sleep duration and the
+#average age for each physical activity. Later this will be used for visualisation. 
+
+PA_Sleep_Data <- data %>%  
+  # Let's remove the NA values first
+  filter(!is.na(sleptim1), !is.na(X_ageg5yr), !is.na(exract11)) %>%
+  group_by(exract11) %>%
+  summarise(Mean_Sleep = mean(sleptim1), Mean_Age = mean(X_ageg5yr), n = n()) %>%
+  filter(n > 99) %>%
+  arrange(desc(Mean_Sleep))
+
+PA_Sleep_Data 
+  
+```
+
+```{r}
+# Creating the scatter plot. Nothing fancy. I just wanted to give label
+# to some of the points so that the reader knows that each point
+# represents a physical activity.
+P1 <- ggplot(subset(PA_Sleep_Data, Mean_Age < 31 | Mean_Age > 65), aes(x = Mean_Age, y = Mean_Sleep))+
+  geom_point()+
+  geom_label_repel(aes(label = exract11))+
+  theme_classic(base_size = 10)
+
+P1 +
+  geom_point(PA_Sleep_Data, mapping = aes(x = Mean_Age, y = Mean_Sleep))+
+  labs(title = "Average sleep duration vs average age for each physical activity",
+       x = "Average age",
+       y = "Average sleep duration")
+```
+
+
+
+Above figure to some extent can explain the association between the type of physical activity and the amount of sleep someone has reported. Age in this case is a confounder and *potentially* it can explain this association. Those physical activities that are generally done by older people are the ones for which the average sleep duration is longer. 
+
+***
+**Research quesion 2:**
+*Gender Pay Gap is a concern to many human rights activists. I want to see if there is an association between gender and income level and if there is such an association, can education level explain it to some extent?*
+
+Let's start by looking into the variable `sex`.
+
+
+```{r}
+data %>%
+  group_by(sex) %>%
+  summarise(count = n())
+```
+
+Good. Almost everyone has reported their sex in this data-set. 
+
+Now, let's take a look at the income level, the related variable in the data set is `income2`.
+
+```{r}
+data %>%
+  group_by(income2) %>%
+  summarise(count = n())
+```
+
+so we have almost 71K out of 490K who have not indicated their income level. We may need to exclude them from our analysis but we should be mindful that this was a big portion. 
+Now, let's see for each income level category how many are male and how many are female.
+
+```{r}
+table(data$income2, data$sex)
+```
+Just by looking at the absolute numbers, it can be seen that the rate of males in higher reported salaries are higher. Maybe this is not the best way of tabulating this data. Let's create a new variable, `dymmy_sex`, which is equal to 1 if sex is reported as Male and 0 if sex is reported as Female. In this way we can simply calculate the proportion of males in each income category. 
+
+```{r}
+data <- data %>%
+  filter(!is.na(sex)) %>%
+  mutate(dummy_sex = ifelse(sex == "Male", 1, 0))
+```
+
+```{r}
+# Visualising the ratio of males as the income level increases.
+data %>%
+  filter(!is.na(sex), !is.na(income2)) %>%
+  group_by(income2) %>%
+  summarise(Male_rate = mean(dummy_sex)) %>%
+  ggplot(aes(x = income2, y = Male_rate, group = 1)) +
+  geom_line(linetype = "dashed", color = 'red')+
+  geom_point()+
+  theme_classic(base_size = 10)+
+  theme(axis.text.x = element_text(angle = 90))+
+  labs(x="Income Level", y="Ratio of males", title = "Ratio of males in each income level")
+  
+
+```
+
+So, what are we observing here? As income level increases, the proportion of males in that particular income level increases. Hence, association between being male and earning more is positive. But, in none of the categories, proportion of males is larger than 50%. But should 50% be the threshold that we look at? Not really. Lets see what percentage of respondents are male in the first place.
+
+```{r}
+data %>%
+  summarise(mean(dummy_sex))
+```
+So, around 41% of our respondents are male. Hence, if 49% of the respondents in the **$75k or more** category are male, since 49% is larger than 41%, that means that males are more represented in that category. So, there exists a gap in pay for different genders. 
+
+Now, let's see if a portion of this difference can be explained by the education level of the participants. 
+
+```{r}
+data %>%
+  filter(!is.na(educa)) %>%
+  group_by(educa) %>%
+  summarise(count = n(), Male_rate = round(mean(dummy_sex), digits = 2))
+```
+
+Let's visualize the above data.
+```{r}
+data %>%
+  filter(!is.na(educa)) %>%
+  group_by(educa) %>%
+  summarise(count = n(), Male_rate = mean(dummy_sex)) %>%
+  ggplot(aes(x = educa, y = Male_rate, group = 1)) +
+  geom_line(linetype = "dashed", color = 'red')+
+  geom_point()+
+  theme_classic(base_size = 7)+
+  theme(axis.text.x = element_text(angle = 90))+
+  labs(x="Education level", y="Ratio of males", title = "Ratio of males in each education level")
+```
+
+Above results show that in our data set, males are more represented in the College Education level (43% > 41%). If we agree that a person with a tertiary education on average lands a better paying job, education level can *potentially* explain to some minor extent the pay gap observed earlier. 
+
+***
+
+**Research quesion 3:**
+*Do those who have stopped smoking in the past 12 months have a better perceived general health? If not, can we explain it by the presence of a medical condition?*
+
+Based on the code-book, the variable that stores the stopped smoking is `stopsmk2` which stores the answer to the question:
+
+Stopped Smoking In Past 12 Month?
+
+```{r}
+str(data$stopsmk2)
+```
+This shows that we are dealing with a categorical variable with two levels. Let's see how many have actually answered this question.
+
+```{r}
+data %>%
+  group_by(stopsmk2) %>%
+  summarise(count = n(), portion = round(n()/length(data$stopsmk2), digits = 2))
+```
+Around 84% of the respondents have indicated that this question is not applicable to them (NA). If a person is not a smoker, then indeed this question is not applicable to that person. But really, are 84% of our respondents non-smokers? Let's check that.
+from the code-book, the variable `smoke100` indicates if a person have smoked at least 100 cigarettes.
+
+```{r}
+data %>%
+  group_by(smoke100) %>%
+  summarise(count = n(), portion = round(n()/length(data$smoke100), digits = 2))
+```
+Another variable is `smokday2` which stores the frequency of days now smoking. 
+
+
+```{r}
+data %>%
+  group_by(smokday2) %>%
+  summarise(count = n(), portion = round(n()/length(data$smokday2), digits = 2))
+```
+
+The three recent tables shows that a big portion of NA responses to our original question (84%) are **not** non-smokers. This reminds us to be careful when communicating the results of the analysis that comes afterwards and to take them with a pinch of salt. 
+
+Now, let's look into the general health. The variable is labeled as  `genhlth` which stores the answer to the question: General Health.
+
+
+```{r}
+data %>%
+  group_by(genhlth) %>%
+  summarise(count = n(), portion = round(n()/length(data$genhlth), digits = 2))
+```
+Now let's look at the distribution of the different general health variable among those who have stopped smoking in the past 12 month and those who have not stopped smoking. 
+
+```{r}
+mytable <- table(data$genhlth,data$stopsmk2)
+
+round(prop.table(mytable, 2), digits = 2) # column percentages
+
+```
+
+**So is there an association between percived general healtha and stopping smoking? **
+
+
+To answer this question we need a concept that is a bit more advanced but I hope the person who is grading this project is familiar with it. 
+
+The truth is, just by looking at the previous table it is hard to ascertain that the differences between the rates are statistically significant and hence presence of a association. There is a test for independence for a two-way table, Chi-Square test, that I am going to use to see if the difference between the proportions observed are statistically significant.
+
+```{r}
+chisq.test(mytable)
+```
+
+P-value reported here is very small and it indicates that the differences observed can't be due to chance. 
+
+Now that we have established that the differences are real, Let's take a look at the results. These results are interesting. For example, while 10% of those who have stopped smoking say they feel Excellent, 11% of those who are continuing with smoking have indicated Excellent as their general health status. Same trend is observed for Very good and Good levels. However, for Fair and Poor levels, the rate of those who have stopped smoking are higher. But why?
+
+One way to explain this observation is to consider that maybe those who are not healthy are being asked or have decided to stop smoking. Looking into the code-book, one can find the following variables that indicate the presence of a cardiovascular disease, asthma or diabetes: 
+
+`cvdinfr4`: Ever Diagnosed With Heart Attack
+
+`cvdcrhd4`: Ever Diagnosed With Angina Or Coronary Heart Disease
+
+`cvdstrk3`: Ever Diagnosed With A Stroke
+
+`asthma3`: Ever Told Had Asthma
+
+`diabete3`: (Ever Told) You Have Diabetes
+
+`prediab1`: Ever Been Told You Have Pre-Diabetes Or Borderline Diabetes
+
+If the presence of a medical condition is more prevalent in the recently stopped smoking group, this will be a strong evidence that supports my hypotheses. 
+
+To figure that out, let's create a variable named `Medical_Cond` and it indicates if a person have said "yes" to any of the conditions listed above. 
+
+
+```{r}
+data <- data %>%
+  mutate(Medical_Cond = ifelse( cvdinfr4 == "Yes" |
+                                 cvdcrhd4 == "Yes" |
+                                 cvdstrk3 == "Yes" |
+                                 asthma3 == "Yes" |
+                                 diabete3 == "Yes" |
+                                 prediab1 == "Yes"  
+                                ,"With Condition","No Condition"))
+```
+
+Now, Let's check if the code actually worked.
+```{r}
+data %>%
+  group_by(Medical_Cond) %>%
+  summarise(count = n())
+```
+Now, Let's tabulate the proportion of respondents who have a condition based on the definition above. 
+```{r}
+tbl <- table(data$stopsmk2, data$Medical_Cond)
+tbl2 <- prop.table(tbl, 1)
+Cond <- as.data.frame.matrix(tbl2) 
+Cond
+```
+
+```{r}
+barplot(Cond$`With Condition`,
+        width = 0.1, 
+        names.arg = c("Stopped smoking", "Continued with smoking"), 
+        ylim = c(0,0.6), 
+        main = "Proportion of respondents with a medical condition",
+        col = "Blue")
+```
+
+
+This result shows that 53% of those who have stopped smoking have a condition with the definition came earlier compared to 45% for those who are continuing with the smoking. If this is the case, maybe presence of a medical condition can explain why those who have stopped smoking in the past do not indicate their General Health Excellent, Very good and good as much.
+
+***
+
+
