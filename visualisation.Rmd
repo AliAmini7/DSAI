@@ -1,0 +1,227 @@
+---
+title: "DLP Visualisation"
+author: "Ali Amini"
+date: "May 18, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(hrbrthemes)
+```
+
+
+```{r}
+data1 <- read.csv("Fertility.csv")
+```
+
+```{r}
+head(data1)
+```
+
+```{r}
+data1 %>%
+  ggplot(aes(x=fertility.rate, y=worker.percent)) + 
+    geom_point(
+        color="black",
+        fill="#D55E00",
+        shape=21,
+        alpha=0.5,
+        size=4,
+        stroke = 1
+        )+
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1),
+    panel.background = element_blank())+
+  labs(title = "Fertility rate Vs female worker percentage for \nBangladesh over 23 years",
+       x = "Fertility Rate",
+       y = "Female worker percentage"
+       )+
+  theme(
+  axis.title.x = element_text(size = 14),
+  axis.text.x = element_text(size = 12),
+  axis.text.y = element_text(size = 12),
+  axis.title.y = element_text(size = 14))
+  
+```
+
+```{r}
+data2 <- read.csv("05-17-2020.csv")
+```
+
+```{r}
+head(data2)
+```
+
+```{r}
+data2 %>%
+ggplot(aes(x=Hospitalization_Rate, y=Mortality_Rate)) + 
+    geom_point(
+        color="black",
+        fill="#D55E00",
+        shape=21,
+        alpha=0.5,
+        size=6,
+        stroke = 1
+        ) +
+    theme_classic()+
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1),
+    panel.background = element_blank())+
+  labs(title = "Hospitalization rate VS Mortality rate for US states",
+       x = "Hospitalization Rate",
+       y = "Mortality Rate")+
+  theme(
+  axis.title.x = element_text(size = 14),
+  axis.text.x = element_text(size = 12),
+  axis.text.y = element_text(size = 12),
+  axis.title.y = element_text(size = 14))
+  
+```
+
+```{r}
+data2 %>%
+ggplot(aes(x=Hospitalization_Rate, y=Mortality_Rate, size = Confirmed)) + 
+    geom_point(
+        color="black",
+        fill="#D55E00",
+        shape=21,
+        alpha=0.5,
+        #size=4,
+        stroke = 1
+        ) +
+  scale_size(range = c(2, 24), name="No. of confirmed cases")+
+    theme_classic()+
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1),
+    panel.background = element_blank())+
+  labs(title = "Hospitalization rate VS Mortality rate for US states",
+       x = "Hospitalization Rate",
+       y = "Mortality Rate")+
+  theme(
+  axis.title.x = element_text(size = 14),
+  axis.text.x = element_text(size = 12),
+  axis.text.y = element_text(size = 12),
+  axis.title.y = element_text(size = 14))
+```
+
+
+```{r}
+data3 <- read.csv("covid_time_series.csv")
+data3$loc <- paste(data3$Country.Region,data3$Province.State, sep = "")
+rownames(data3) <- data3$loc
+head(data3)
+data3_t <- as.data.frame(t(as.matrix(data3)))
+data3_t <- data3_t[-c(1:4, nrow(data3_t)),]
+tail(data3_t)
+```
+
+```{r}
+rownames(data3_t) <- gsub("X", "0",rownames(data3_t))
+rownames(data3_t) <- paste(rownames(data3_t),"20")
+rownames(data3_t) <- gsub(" ", "",rownames(data3_t))
+rownames(data3_t)
+```
+
+```{r}
+rownames(data3_t) <- as.Date(rownames(data3_t), "%m.%d.%Y")
+
+indx <- sapply(data3_t, is.factor)
+data3_t[indx] <- lapply(data3_t[indx], function(x) as.numeric(as.character(x)))
+data3_t <- cbind(date = rownames(data3_t), data3_t)
+rownames(data3_t) <- NULL
+data3_t$date <- as.Date(data3_t$date)
+head(data3_t)
+```
+
+
+```{r}
+ggplot(data3_t, aes(date)) + 
+  geom_line(aes(y = Singapore, colour = "Singapore"), size = 1) + 
+  geom_line(aes(y = Malaysia, colour = "Malaysia"), size = 1)+
+    theme(panel.border = element_rect(colour = "black", fill=NA, size=1),
+    panel.background = element_blank(),
+    legend.title = element_blank())+
+  labs(title = "Accumulated number of COVID-19 patients in \nSingapore and Malaysia",
+       x = "Date",
+       y = "Total number of patients")+
+  theme(
+  axis.title.x = element_text(size = 14),
+  axis.text.x = element_text(size = 12),
+  axis.text.y = element_text(size = 12),
+  axis.title.y = element_text(size = 14))
+```
+
+```{r}
+Emp_rate <- c(87.65, 91.05, 91.45, 94.77, 91.03)
+Uni <- c("NTU", "NUS", "SIT", "SMU", "SUTD")
+Emp_data <- as.data.frame(cbind(Uni, Emp_rate)) 
+Emp_data$Emp_rate <- as.numeric(as.character(Emp_data$Emp_rate))
+Emp_data
+```
+
+```{r}
+Emp_data %>%
+  ggplot(aes(x=Uni, y=Emp_rate)) + 
+  geom_bar(stat="identity", color="black",
+        fill="#D55E00",
+        alpha = 0.5)+
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1),
+    panel.background = element_blank(),
+    legend.title = element_blank())+
+  labs(title = "Overal employement rate",
+       x = "University",
+       y = "")+
+  geom_text(aes(label=Emp_rate), vjust=1.6, color="black", size=6)+
+  theme(
+  axis.title.x = element_text(size = 14),
+  axis.text.x = element_text(size = 16),
+  axis.text.y = element_text(size = 12),
+  axis.title.y = element_text(size = 14))
+```
+```{r}
+Emp_data %>%
+  ggplot(aes(x=Uni, y=Emp_rate)) + 
+  geom_bar(stat="identity", color="black",
+        fill="#D55E00",
+        alpha = 0.5)+
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1),
+    panel.background = element_blank(),
+    legend.title = element_blank())+
+  labs(title = "Overal employement rate",
+       x = "University",
+       y = "")+
+  coord_cartesian(ylim=c(85,95))+
+  geom_text(aes(label=Emp_rate), vjust=1.6, color="black", size=6)+
+  theme(
+  axis.title.x = element_text(size = 14),
+  axis.text.x = element_text(size = 16),
+  axis.text.y = element_text(size = 12),
+  axis.title.y = element_text(size = 14))
+```
+
+
+```{r}
+Emp_data %>%
+  ggplot(aes(x=Uni, y=Emp_rate)) + 
+  geom_col(stat="identity", color="black",
+        fill="#D55E00",
+        alpha = 0.5)+
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1),
+    panel.background = element_blank(),
+    legend.title = element_blank())+
+  labs(title = "Overal employement rate",
+       x = "University",
+       y = "")+
+  geom_text(aes(label=Emp_rate), hjust=1.6, color="black", size=6)+
+  theme(
+  axis.title.x = element_text(size = 14),
+  axis.text.x = element_text(size = 16),
+  axis.text.y = element_text(size = 12),
+  axis.title.y = element_text(size = 14))+
+  coord_flip()
+```
+
+
